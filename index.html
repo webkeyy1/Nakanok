@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NAKAN SHOP - Mua Key & Số Dư</title>
+  <title>NAKAN SHOP - Mua Key & Quản Lý Kho/Đơn</title>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
     body { margin: 0; background: #090b10; color: #f8fafc; padding: 12px; }
@@ -33,8 +33,9 @@
 
     .msg { padding: 10px; border-radius: 10px; background: #14532d; color: #dcfce7; margin-top: 8px; display: none; font-size: 13px; }
     .err { padding: 10px; border-radius: 10px; background: #7f1d1d; color: #fee2e2; margin-top: 8px; display: none; font-size: 13px; }
-    .item { background: #0c0f17; border: 1px solid #22283a; border-radius: 10px; padding: 12px; margin-top: 8px; }
+    .item { background: #0c0f17; border: 1px solid #22283a; border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
     .key-box { background: #06080d; border: 1px dashed #22c55e; border-radius: 8px; padding: 10px; color: #4ade80; font-family: monospace; font-weight: 700; white-space: pre-line; word-break: break-all; margin-top: 8px; font-size: 13px; }
+    .stock-code { font-family: monospace; color: #e2e8f0; font-size: 13px; word-break: break-all; }
 
     .modal-backdrop { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.85); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 9999; }
     .modal-card { width: 100%; max-width: 440px; background: #131722; border: 1px solid #4ade80; border-radius: 14px; padding: 16px; }
@@ -99,7 +100,7 @@
     </div>
 
     <div id="nakanPanel" class="card" style="display:none; border-color:#38bdf8;">
-      <h2 style="color:#38bdf8;">🛠️ Nakan: Cộng/Xóa Số Dư, Nhập Kho & Xóa Đơn Hàng</h2>
+      <h2 style="color:#38bdf8;">🛠️ Nakan: Số Dư, Kho Key & Đơn Hàng</h2>
 
       <h3 id="secAddBalance">1. Cộng hoặc Xóa số dư</h3>
       <input id="targetAccInput" type="text" placeholder="Tên tài khoản hoặc email cần xử lý..." />
@@ -110,18 +111,34 @@
       </div>
       <div id="moneyFeedback" class="err"></div>
 
-      <h3 style="margin-top:14px;">2. Tạo gói & Nhập kho key</h3>
+      <h3 style="margin-top:14px;">2. Tạo gói, Nhập key vô kho & Xóa key ở kho</h3>
       <div style="display:flex; gap:8px;">
         <input id="newPkgName" type="text" placeholder="Tên gói mới (VD: 1 Ngày)" style="margin:0;" />
         <input id="newPkgPrice" type="number" placeholder="Giá (VD: 5000)" style="margin:0;" />
         <button class="green" style="width:auto; white-space:nowrap; margin:0;" onclick="adminAddPkg()">+ Gói</button>
       </div>
-      <select id="adminPkgSelect" style="margin-top:10px;"></select>
-      <textarea id="adminKeysInput" rows="4" placeholder="Dán key vào đây, mỗi dòng 1 key..."></textarea>
-      <button onclick="adminImportKeys()">Nhập Kho Key</button>
+      <select id="adminPkgSelect" style="margin-top:10px;" onchange="renderStockKeys()"></select>
+      <textarea id="adminKeysInput" rows="3" placeholder="Dán key để nhập vô kho, mỗi dòng 1 key..."></textarea>
+      <button onclick="adminImportKeys()">Nhập Key Vô Kho</button>
       <div id="stockFeedback" class="err"></div>
 
-      <h3 style="margin-top:14px;">3. Danh sách & Xóa đơn hàng</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px;">
+        <span id="stockCountLabel" class="sub-text">Key đang có trong kho: 0</span>
+        <button class="red" style="width:auto; margin:0; padding:6px 10px; font-size:12px;" onclick="adminClearPkgKeys()">Xóa Tất Cả Key Gói Này</button>
+      </div>
+      <div id="adminStockList" class="sub-text" style="margin-top:6px;">Chưa có key tồn kho.</div>
+
+      <h3 style="margin-top:16px;">3. Thêm đơn hàng & Xóa đơn hàng</h3>
+      <input id="orderBuyerInput" type="text" placeholder="Tài khoản hoặc email khách nhận đơn (VD: khach1)..." />
+      <select id="orderPkgSelect"></select>
+      <div style="display:flex; gap:8px;">
+        <input id="orderQtyInput" type="number" min="1" step="1" value="1" placeholder="SL (nếu tự lấy từ kho)" style="margin:0; flex:1;" />
+        <input id="orderCustomPriceInput" type="number" step="1" placeholder="Giá đơn (để trống tự tính)" style="margin:0; flex:1;" />
+      </div>
+      <textarea id="orderManualKeysInput" rows="2" placeholder="Nhập/dán key tay (để trống nếu muốn tự rút key từ kho)..."></textarea>
+      <button class="green" onclick="adminCreateOrder()">+ Thêm Đơn Hàng</button>
+
+      <div style="margin-top:10px;" class="sub-text">Danh sách đơn hàng hiện có:</div>
       <div id="adminOrdersList" class="sub-text">Đang tải đơn hàng...</div>
       <div id="orderAdminFeedback" class="err"></div>
     </div>
@@ -182,7 +199,6 @@
   };
 
   const INTERNAL_DOMAIN = "htheanh.shop";
-  // Chỉ tài khoản Nakan mới dùng được phần cộng/xóa số dư, + số dư, nhập kho và xóa đơn hàng
   const NAKAN_ACCOUNTS = [
     "nakan@" + INTERNAL_DOMAIN,
     "nakan@gmail.com",
@@ -197,6 +213,7 @@
   let currentUsername = "";
   let currentBalance = 0;
   let packages = [];
+  let availableKeys = [];
   let selectedPkgId = "";
 
   function isNakan() {
@@ -324,14 +341,40 @@
     await Promise.all([loadPackages(), loadMyKeys(), nakanOk ? loadAdminOrders() : Promise.resolve()]);
   });
 
+  window.renderStockKeys = function () {
+    const box = document.getElementById("adminStockList");
+    const countEl = document.getElementById("stockCountLabel");
+    if (!box || !countEl) return;
+    const pid = document.getElementById("adminPkgSelect").value;
+    const list = availableKeys.filter(function (k) { return k.productId === pid; });
+    countEl.textContent = "Key đang có trong kho: " + list.length;
+
+    if (!pid || list.length === 0) {
+      box.innerHTML = "Chưa có key nào trong kho của gói này.";
+      return;
+    }
+    box.innerHTML = list.map(function (k) {
+      return `
+        <div class="item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span class="stock-code">${k.code}</span>
+          <button class="red" style="width:auto; margin:0; padding:5px 10px; font-size:12px;" onclick="adminDeleteKey('${k.id}')">Xóa</button>
+        </div>
+      `;
+    }).join("");
+  };
+
   async function loadPackages() {
     const [pSnap, kSnap] = await Promise.all([
       getDocs(collection(db, "products")),
       getDocs(query(collection(db, "keys"), where("sold", "==", false)))
     ]);
+
+    availableKeys = [];
     const stockMap = {};
     kSnap.forEach(function (kd) {
-      const pid = kd.data().productId || "";
+      const d = kd.data();
+      const pid = d.productId || "";
+      availableKeys.push({ id: kd.id, productId: pid, code: String(d.code || "").trim() });
       stockMap[pid] = (stockMap[pid] || 0) + 1;
     });
 
@@ -349,10 +392,14 @@
 
     const grid = document.getElementById("pkgGrid");
     const sel = document.getElementById("adminPkgSelect");
+    const orderSel = document.getElementById("orderPkgSelect");
+
     if (packages.length === 0) {
       grid.innerHTML = "<div class='sub-text'>Chưa có gói key nào.</div>";
       sel.innerHTML = "<option value=''>-- Chưa có gói --</option>";
+      orderSel.innerHTML = "<option value=''>-- Chọn gói --</option>";
       updateBuyTotal();
+      renderStockKeys();
       return;
     }
 
@@ -371,11 +418,23 @@
       `;
     }).join("");
 
-    sel.innerHTML = packages.map(function (p) {
-      return `<option value="${p.id}">${p.name} (${p.price.toLocaleString("vi-VN")}đ)</option>`;
+    const oldStockPkg = sel.value;
+    const optsHtml = packages.map(function (p) {
+      return `<option value="${p.id}">${p.name} (${p.price.toLocaleString("vi-VN")}đ - còn ${p.stock})</option>`;
     }).join("");
+    sel.innerHTML = optsHtml;
+    if (oldStockPkg && packages.some(function (p) { return p.id === oldStockPkg; })) {
+      sel.value = oldStockPkg;
+    }
+
+    const oldOrderPkg = orderSel.value;
+    orderSel.innerHTML = optsHtml;
+    if (oldOrderPkg && packages.some(function (p) { return p.id === oldOrderPkg; })) {
+      orderSel.value = oldOrderPkg;
+    }
 
     updateBuyTotal();
+    renderStockKeys();
   }
 
   window.buyKey = async function () {
@@ -504,6 +563,94 @@
       updateBalanceUI();
     }
     showBox("moneyFeedback", "Đã xóa số dư của " + label + " về 0đ.", true);
+  };
+
+  window.adminDeleteKey = async function (keyId) {
+    if (!isNakan() || !keyId) return;
+    if (!confirm("Xóa key này khỏi kho?")) return;
+    try {
+      await deleteDoc(doc(db, "keys", keyId));
+      showBox("stockFeedback", "Đã xóa key khỏi kho.", true);
+      await loadPackages();
+    } catch (e) {
+      showBox("stockFeedback", "Lỗi xóa key: " + e.message, false);
+    }
+  };
+
+  window.adminClearPkgKeys = async function () {
+    if (!isNakan()) return;
+    const pid = document.getElementById("adminPkgSelect").value;
+    const list = availableKeys.filter(function (k) { return k.productId === pid; });
+    if (!pid || list.length === 0) return showBox("stockFeedback", "Không có key nào để xóa.", false);
+    if (!confirm("Xóa toàn bộ " + list.length + " key tồn kho của gói này?")) return;
+    try {
+      for (const k of list) {
+        await deleteDoc(doc(db, "keys", k.id));
+      }
+      showBox("stockFeedback", "Đã xóa " + list.length + " key khỏi kho.", true);
+      await loadPackages();
+    } catch (e) {
+      showBox("stockFeedback", "Lỗi xóa key: " + e.message, false);
+    }
+  };
+
+  window.adminCreateOrder = async function () {
+    if (!isNakan()) return showBox("orderAdminFeedback", "Chỉ tài khoản Nakan mới được thêm đơn hàng.", false);
+    const rawBuyer = document.getElementById("orderBuyerInput").value.trim();
+    const pid = document.getElementById("orderPkgSelect").value;
+    const qty = Math.max(1, Math.floor(Number(document.getElementById("orderQtyInput").value || 1)));
+    const customPriceRaw = document.getElementById("orderCustomPriceInput").value.trim();
+    const manualLines = document.getElementById("orderManualKeysInput").value
+      .split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+
+    if (!rawBuyer) return showBox("orderAdminFeedback", "Nhập tài khoản/email khách nhận đơn.", false);
+    const pkg = packages.find(function (x) { return x.id === pid; });
+    if (!pkg) return showBox("orderAdminFeedback", "Hãy chọn gói key trước.", false);
+
+    try {
+      const targetUser = await findUserDoc(rawBuyer);
+      const targetUid = targetUser ? targetUser.id : ("manual:" + rawBuyer.toLowerCase());
+      const targetEmail = targetUser ? (targetUser.data().email || rawBuyer) : toAuthEmail(rawBuyer);
+
+      let finalKeys = [];
+      let orderTitle = pkg.name;
+
+      if (manualLines.length > 0) {
+        finalKeys = manualLines;
+        orderTitle = manualLines.length > 1 ? (pkg.name + " x" + manualLines.length) : pkg.name;
+      } else {
+        const kSnap = await getDocs(query(collection(db, "keys"), where("productId", "==", pkg.id), where("sold", "==", false)));
+        const available = kSnap.docs.slice(0, qty);
+        if (available.length < qty) {
+          return showBox("orderAdminFeedback", "Kho chỉ còn " + available.length + " key (cần " + qty + " hoặc nhập key tay).", false);
+        }
+        for (const kd of available) {
+          finalKeys.push(String(kd.data().code || "").trim());
+          await updateDoc(doc(db, "keys", kd.id), { sold: true, buyerId: targetUid });
+        }
+        orderTitle = qty > 1 ? (pkg.name + " x" + qty) : pkg.name;
+      }
+
+      const finalCount = Math.max(1, finalKeys.length);
+      const totalPrice = customPriceRaw !== "" ? Number(customPriceRaw) : (pkg.price * finalCount);
+      const keyStr = finalKeys.filter(Boolean).join("\n");
+
+      await addDoc(collection(db, "orders"), {
+        userId: targetUid,
+        buyerEmail: targetEmail,
+        productName: orderTitle,
+        price: Number.isFinite(totalPrice) ? totalPrice : 0,
+        keyCode: keyStr,
+        createdAt: serverTimestamp()
+      });
+
+      document.getElementById("orderManualKeysInput").value = "";
+      document.getElementById("orderCustomPriceInput").value = "";
+      showBox("orderAdminFeedback", "Đã thêm đơn \"" + orderTitle + "\" cho " + targetEmail + "!", true);
+      await Promise.all([loadPackages(), loadMyKeys(), loadAdminOrders()]);
+    } catch (e) {
+      showBox("orderAdminFeedback", "Lỗi thêm đơn: " + e.message, false);
+    }
   };
 
   async function loadAdminOrders() {
