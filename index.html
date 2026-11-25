@@ -83,7 +83,7 @@
 
     <div class="card">
       <h2>🛒 Mua Key</h2>
-      <div id="pkgGrid" class="pkg-grid">Đang tải gói...</div>
+      <div id="pkgGrid" class="pkg-grid">Chưa có gói key nào.</div>
       <div class="sub-text">Số lượng mua:</div>
       <input id="buyQtyInput" type="number" min="1" step="1" value="1" oninput="updateBuyTotal()" />
       <div style="display:flex; justify-content:space-between; align-items:center; margin:8px 0;">
@@ -100,7 +100,7 @@
     </div>
 
     <div id="nakanPanel" class="card" style="display:none; border-color:#38bdf8;">
-      <h2 style="color:#38bdf8;">🛠️ Nakan: Số Dư, Kho Key & Đơn Hàng</h2>
+      <h2 style="color:#38bdf8;">🛠️ Nakan: Số Dư, Gói/Kho Key & Đơn Hàng</h2>
 
       <h3 id="secAddBalance">1. Cộng hoặc Xóa số dư</h3>
       <input id="targetAccInput" type="text" placeholder="Tên tài khoản hoặc email cần xử lý..." />
@@ -111,12 +111,15 @@
       </div>
       <div id="moneyFeedback" class="err"></div>
 
-      <h3 style="margin-top:14px;">2. Tạo gói, Nhập key vô kho & Xóa key ở kho</h3>
+      <h3 style="margin-top:14px;">2. Tạo/Xóa gói, Nhập & Xóa key ở kho</h3>
       <div style="display:flex; gap:8px;">
         <input id="newPkgName" type="text" placeholder="Tên gói mới (VD: 1 Ngày)" style="margin:0;" />
         <input id="newPkgPrice" type="number" placeholder="Giá (VD: 5000)" style="margin:0;" />
         <button class="green" style="width:auto; white-space:nowrap; margin:0;" onclick="adminAddPkg()">+ Gói</button>
       </div>
+
+      <div id="adminPkgList" class="sub-text" style="margin-top:8px;">Chưa có gói nào.</div>
+
       <select id="adminPkgSelect" style="margin-top:10px;" onchange="renderStockKeys()"></select>
       <textarea id="adminKeysInput" rows="3" placeholder="Dán key để nhập vô kho, mỗi dòng 1 key..."></textarea>
       <button onclick="adminImportKeys()">Nhập Key Vô Kho</button>
@@ -367,6 +370,26 @@
     }).join("");
   };
 
+  function renderAdminPkgList() {
+    const box = document.getElementById("adminPkgList");
+    if (!box) return;
+    if (packages.length === 0) {
+      box.innerHTML = "Chưa có gói nào.";
+      return;
+    }
+    box.innerHTML = packages.map(function (p) {
+      return `
+        <div class="item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div>
+            <b>${p.name}</b> — <span style="color:#fb7185;">${p.price.toLocaleString("vi-VN")}đ</span>
+            <div class="sub-text">Còn ${p.stock} key</div>
+          </div>
+          <button class="red" style="width:auto; margin:0; padding:5px 10px; font-size:12px;" onclick="adminDeletePkg('${p.id}')">Xóa Gói</button>
+        </div>
+      `;
+    }).join("");
+  }
+
   async function loadPackages() {
     const [pSnap, kSnap] = await Promise.all([
       getDocs(collection(db, "products")),
@@ -399,11 +422,13 @@
     const orderSel = document.getElementById("orderPkgSelect");
 
     if (packages.length === 0) {
+      selectedPkgId = "";
       grid.innerHTML = "<div class='sub-text'>Chưa có gói key nào.</div>";
       sel.innerHTML = "<option value=''>-- Chưa có gói --</option>";
       orderSel.innerHTML = "<option value=''>-- Chọn gói --</option>";
       updateBuyTotal();
       renderStockKeys();
+      renderAdminPkgList();
       return;
     }
 
@@ -439,7 +464,29 @@
 
     updateBuyTotal();
     renderStockKeys();
+    renderAdminPkgList();
   }
+
+  window.adminDeletePkg = async function (pkgId) {
+    if (!isNakan() || !pkgId) return;
+    const pkg = packages.find(function (x) { return x.id === pkgId; });
+    const label = pkg ? pkg.name : pkgId;
+    if (!confirm("Xóa gói \"" + label + "\" (và xóa luôn key tồn kho thuộc gói này)?")) return;
+    try {
+      const kSnap = await getDocs(query(collection(db, "keys"), where("productId", "==", pkgId)));
+      for (const kd of kSnap.docs) {
+        if (!kd.data().sold) {
+          await deleteDoc(doc(db, "keys", kd.id));
+        }
+      }
+      await deleteDoc(doc(db, "products", pkgId));
+      if (selectedPkgId === pkgId) selectedPkgId = "";
+      showBox("stockFeedback", "Đã xóa gói \"" + label + "\".", true);
+      await loadPackages();
+    } catch (e) {
+      showBox("stockFeedback", "Lỗi xóa gói: " + e.message, false);
+    }
+  };
 
   window.buyKey = async function () {
     if (!currentUser) return;
