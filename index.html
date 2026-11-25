@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HTHEANH SHOP - Mua Key, Nhập Kho & Số Dư</title>
+  <title>NAKAN SHOP - Mua Key & Số Dư</title>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
     body { margin: 0; background: #090b10; color: #f8fafc; padding: 12px; }
@@ -22,6 +22,7 @@
     .top-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
     .balance-box { font-size: 18px; font-weight: 800; color: #22c55e; }
     .sub-text { font-size: 12px; color: #94a3b8; }
+    .plus-bal-btn { display: inline-block; width: auto; margin: 0 0 0 8px; padding: 4px 10px; font-size: 12px; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 700; }
 
     .pkg-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
     .pkg-tile { background: #191e2c; border: 1.5px solid #2a3146; border-radius: 12px; padding: 10px; text-align: center; cursor: pointer; }
@@ -70,7 +71,10 @@
       <div class="top-bar">
         <div>
           <div id="userLabel" style="font-weight:700; font-size:15px;">Tài khoản</div>
-          <div class="sub-text">Số dư hiện tại: <span id="balanceText" class="balance-box">0đ</span></div>
+          <div class="sub-text">
+            Số dư: <span id="balanceText" class="balance-box">0đ</span>
+            <button id="plusBalBtn" class="plus-bal-btn" style="display:none;" onclick="focusAddMoney()">+ số dư</button>
+          </div>
         </div>
         <button class="dark" style="width:auto; margin:0; padding:8px 12px;" onclick="logoutUser()">Đăng xuất</button>
       </div>
@@ -94,14 +98,14 @@
       <div id="myKeysList" class="sub-text">Chưa có key nào.</div>
     </div>
 
-    <div id="adminCard" class="card" style="display:none; border-color:#38bdf8;">
-      <h2 style="color:#38bdf8;">🛠️ Admin: Cộng/Xóa Số Dư, Nhập Kho & Xóa Đơn Hàng</h2>
+    <div id="nakanPanel" class="card" style="display:none; border-color:#38bdf8;">
+      <h2 style="color:#38bdf8;">🛠️ Nakan: Cộng/Xóa Số Dư, Nhập Kho & Xóa Đơn Hàng</h2>
 
-      <h3>1. Cộng hoặc Xóa số dư người dùng</h3>
+      <h3 id="secAddBalance">1. Cộng hoặc Xóa số dư</h3>
       <input id="targetAccInput" type="text" placeholder="Tên tài khoản hoặc email cần xử lý..." />
       <input id="addMoneyInput" type="number" step="1" placeholder="Số tiền cộng (VD: 20000)..." />
       <div style="display:flex; gap:8px;">
-        <button class="green" style="margin:0; flex:1;" onclick="adminAddMoney()">Cộng Tiền</button>
+        <button class="green" style="margin:0; flex:1;" onclick="adminAddMoney()">Cộng Số Dư</button>
         <button class="red" style="margin:0; flex:1;" onclick="adminClearMoney()">Xóa Số Dư (0đ)</button>
       </div>
       <div id="moneyFeedback" class="err"></div>
@@ -148,6 +152,13 @@
       alert("Hãy giữ tay để copy mã key.");
     }
   }
+
+  function focusAddMoney() {
+    const sec = document.getElementById("secAddBalance");
+    if (sec) sec.scrollIntoView({ behavior: "smooth" });
+    const inp = document.getElementById("targetAccInput");
+    if (inp) inp.focus();
+  }
 </script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -170,20 +181,29 @@
     measurementId: "G-296WHXVZ4V"
   };
 
-  const ADMIN_EMAIL = "htheanh817@gmail.com";
   const INTERNAL_DOMAIN = "htheanh.shop";
+  // Chỉ tài khoản Nakan mới dùng được phần cộng/xóa số dư, + số dư, nhập kho và xóa đơn hàng
+  const NAKAN_ACCOUNTS = [
+    "nakan@" + INTERNAL_DOMAIN,
+    "nakan@gmail.com",
+    "htheanh817@gmail.com"
+  ];
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
 
   let currentUser = null;
+  let currentUsername = "";
   let currentBalance = 0;
   let packages = [];
   let selectedPkgId = "";
 
-  function isAdmin() {
-    return Boolean(currentUser && currentUser.email === ADMIN_EMAIL);
+  function isNakan() {
+    if (!currentUser) return false;
+    const em = String(currentUser.email || "").trim().toLowerCase();
+    const un = String(currentUsername || "").trim().toLowerCase();
+    return NAKAN_ACCOUNTS.includes(em) || un === "nakan";
   }
 
   function toAuthEmail(raw) {
@@ -211,6 +231,12 @@
 
   function updateBalanceUI() {
     document.getElementById("balanceText").textContent = currentBalance.toLocaleString("vi-VN") + "đ";
+  }
+
+  function syncNakanVisibility() {
+    const ok = isNakan();
+    document.getElementById("nakanPanel").style.display = ok ? "block" : "none";
+    document.getElementById("plusBalBtn").style.display = ok ? "inline-block" : "none";
   }
 
   window.updateBuyTotal = function () {
@@ -276,23 +302,26 @@
     }
     document.getElementById("authBox").style.display = "none";
     document.getElementById("mainArea").style.display = "block";
-    const adminOk = isAdmin();
-    document.getElementById("adminCard").style.display = adminOk ? "block" : "none";
 
     const ref = doc(db, "users", user.uid);
     const snap = await getDoc(ref);
     const fallback = getUsername("", user.email);
     if (!snap.exists()) {
       await setDoc(ref, { username: fallback, email: user.email, balance: 0 });
+      currentUsername = fallback;
       currentBalance = 0;
       document.getElementById("userLabel").textContent = fallback;
     } else {
       const d = snap.data();
+      currentUsername = d.username || fallback;
       currentBalance = Number(d.balance || 0);
-      document.getElementById("userLabel").textContent = d.username || fallback;
+      document.getElementById("userLabel").textContent = currentUsername;
     }
+
+    const nakanOk = isNakan();
+    syncNakanVisibility();
     updateBalanceUI();
-    await Promise.all([loadPackages(), loadMyKeys(), adminOk ? loadAdminOrders() : Promise.resolve()]);
+    await Promise.all([loadPackages(), loadMyKeys(), nakanOk ? loadAdminOrders() : Promise.resolve()]);
   });
 
   async function loadPackages() {
@@ -388,7 +417,7 @@
       });
 
       showBox("buyFeedback", "Mua thành công " + title + "!", true);
-      await Promise.all([loadPackages(), loadMyKeys(), isAdmin() ? loadAdminOrders() : Promise.resolve()]);
+      await Promise.all([loadPackages(), loadMyKeys(), isNakan() ? loadAdminOrders() : Promise.resolve()]);
       openKeyModal(title, keyStr);
     } catch (e) {
       showBox("buyFeedback", "Lỗi mua key: " + e.message, false);
@@ -436,7 +465,7 @@
   }
 
   window.adminAddMoney = async function () {
-    if (!isAdmin()) return;
+    if (!isNakan()) return showBox("moneyFeedback", "Chỉ tài khoản Nakan mới được cộng số dư.", false);
     const rawTarget = document.getElementById("targetAccInput").value.trim();
     const amount = Number(document.getElementById("addMoneyInput").value);
     if (!rawTarget || !Number.isFinite(amount) || amount === 0) {
@@ -458,7 +487,7 @@
   };
 
   window.adminClearMoney = async function () {
-    if (!isAdmin()) return;
+    if (!isNakan()) return showBox("moneyFeedback", "Chỉ tài khoản Nakan mới được xóa số dư.", false);
     const rawTarget = document.getElementById("targetAccInput").value.trim();
     if (!rawTarget) return showBox("moneyFeedback", "Nhập tài khoản cần xóa số dư.", false);
 
@@ -478,7 +507,7 @@
   };
 
   async function loadAdminOrders() {
-    if (!isAdmin()) return;
+    if (!isNakan()) return;
     const box = document.getElementById("adminOrdersList");
     const snap = await getDocs(collection(db, "orders"));
     if (snap.empty) {
@@ -504,7 +533,7 @@
   }
 
   window.adminDeleteOrder = async function (orderId) {
-    if (!isAdmin() || !orderId) return;
+    if (!isNakan() || !orderId) return;
     if (!confirm("Xóa đơn hàng này?")) return;
     try {
       await deleteDoc(doc(db, "orders", orderId));
@@ -516,7 +545,7 @@
   };
 
   window.adminAddPkg = async function () {
-    if (!isAdmin()) return;
+    if (!isNakan()) return showBox("stockFeedback", "Chỉ tài khoản Nakan mới được tạo gói.", false);
     const name = document.getElementById("newPkgName").value.trim();
     const price = Number(document.getElementById("newPkgPrice").value);
     if (!name || !price || price <= 0) return showBox("stockFeedback", "Nhập đủ tên gói và giá.", false);
@@ -528,7 +557,7 @@
   };
 
   window.adminImportKeys = async function () {
-    if (!isAdmin()) return;
+    if (!isNakan()) return showBox("stockFeedback", "Chỉ tài khoản Nakan mới được nhập kho.", false);
     const pid = document.getElementById("adminPkgSelect").value;
     const lines = document.getElementById("adminKeysInput").value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
     if (!pid) return showBox("stockFeedback", "Hãy tạo/chọn gói trước.", false);
