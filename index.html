@@ -138,7 +138,10 @@
       <textarea id="orderManualKeysInput" rows="2" placeholder="Nhập/dán key tay (để trống nếu muốn tự rút key từ kho)..."></textarea>
       <button class="green" onclick="adminCreateOrder()">+ Thêm Đơn Hàng</button>
 
-      <div style="margin-top:10px;" class="sub-text">Danh sách đơn hàng hiện có:</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:8px;">
+        <span class="sub-text">Danh sách đơn hàng hiện có:</span>
+        <button class="red" style="width:auto; margin:0; padding:6px 10px; font-size:12px;" onclick="adminClearAllOrders()">Xóa Tất Cả Đơn</button>
+      </div>
       <div id="adminOrdersList" class="sub-text">Đang tải đơn hàng...</div>
       <div id="orderAdminFeedback" class="err"></div>
     </div>
@@ -214,6 +217,7 @@
   let currentBalance = 0;
   let packages = [];
   let availableKeys = [];
+  let adminOrdersCache = [];
   let selectedPkgId = "";
 
   function isNakan() {
@@ -657,23 +661,28 @@
     if (!isNakan()) return;
     const box = document.getElementById("adminOrdersList");
     const snap = await getDocs(collection(db, "orders"));
+    adminOrdersCache = [];
     if (snap.empty) {
       box.innerHTML = "Chưa có đơn hàng nào.";
       return;
     }
-    const list = [];
     snap.forEach(function (d) {
       const o = d.data();
-      list.push({ id: d.id, buyer: o.buyerEmail || o.userId || "user", name: o.productName || "Key", price: Number(o.price || 0) });
+      adminOrdersCache.push({
+        id: d.id,
+        buyer: o.buyerEmail || o.userId || "user",
+        name: o.productName || "Key",
+        price: Number(o.price || 0)
+      });
     });
-    box.innerHTML = list.map(function (item) {
+    box.innerHTML = adminOrdersCache.map(function (item) {
       return `
         <div class="item" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <div>
             <b>${item.name}</b> — <span style="color:#facc15;">${item.price.toLocaleString("vi-VN")}đ</span>
             <div class="sub-text">Khách: ${item.buyer}</div>
           </div>
-          <button class="red" style="width:auto; margin:0; padding:6px 10px; font-size:12px;" onclick="adminDeleteOrder('${item.id}')">Xóa</button>
+          <button class="red" style="width:auto; margin:0; padding:6px 10px; font-size:12px;" onclick="adminDeleteOrder('${item.id}')">Xóa Đơn</button>
         </div>
       `;
     }).join("");
@@ -685,6 +694,21 @@
     try {
       await deleteDoc(doc(db, "orders", orderId));
       showBox("orderAdminFeedback", "Đã xóa đơn hàng.", true);
+      await Promise.all([loadAdminOrders(), loadMyKeys()]);
+    } catch (e) {
+      showBox("orderAdminFeedback", "Lỗi xóa đơn hàng: " + e.message, false);
+    }
+  };
+
+  window.adminClearAllOrders = async function () {
+    if (!isNakan()) return;
+    if (adminOrdersCache.length === 0) return showBox("orderAdminFeedback", "Không có đơn hàng nào để xóa.", false);
+    if (!confirm("Xóa toàn bộ " + adminOrdersCache.length + " đơn hàng?")) return;
+    try {
+      for (const item of adminOrdersCache) {
+        await deleteDoc(doc(db, "orders", item.id));
+      }
+      showBox("orderAdminFeedback", "Đã xóa toàn bộ " + adminOrdersCache.length + " đơn hàng.", true);
       await Promise.all([loadAdminOrders(), loadMyKeys()]);
     } catch (e) {
       showBox("orderAdminFeedback", "Lỗi xóa đơn hàng: " + e.message, false);
